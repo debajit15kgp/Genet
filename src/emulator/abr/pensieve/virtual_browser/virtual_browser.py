@@ -5,7 +5,7 @@ import os
 import signal
 from time import sleep
 from urllib.parse import ParseResult, parse_qsl, unquote, urlencode, urlparse
-
+import subprocess
 from pyvirtualdisplay import Display
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -124,6 +124,23 @@ def add_url_params(url, params):
 def timeout_handler(signum, frame):
     raise Exception("Timeout")
 
+def launch_bpftrace(trace_output_file):
+    """Launch bpftrace script and return the process."""
+    cmd = "sudo bpftrace check.bt > bpftrace_output.txt"
+    
+    # with open(trace_output_file, 'w') as f:
+    process = subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE)
+    check_interval = 10
+
+    # Start log rotation process
+    rotation_cmd = f"watch -n {check_interval} python3 -c '\
+import sys; from collections import deque; \
+lines = deque(open(\"{trace_output_file}\", \"r\"), maxlen=40000); \
+open(\"{trace_output_file}\", \"w\").writelines(lines)'"
+    
+    rotation_process = subprocess.Popen(rotation_cmd, shell=True)
+
+    return process, rotation_process
 
 def main():
     args = parse_args()
@@ -131,6 +148,10 @@ def main():
     port_number = args.port
     abr_algo = args.abr
     run_time = args.run_time
+
+    # Start bpftrace before ABR server
+    trace_output = f"bpftrace_output.txt"
+    bpftrace_process, rotation_process = launch_bpftrace(trace_output)
 
     # start abr server here
     # prevent multiple process from being synchronized
@@ -210,6 +231,10 @@ def main():
         # except:
         #     pass
         print(e)
+    finally:
+        bpftrace_process.terminate()
+        rotation_process.terminate()
+        abr_server_proc.terminate()
     abr_server_proc.terminate()
 
 

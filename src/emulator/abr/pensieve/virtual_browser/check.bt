@@ -1,0 +1,29 @@
+#!/usr/local/bin/bpftrace
+#include <net/sock.h>
+#include <linux/tcp.h>
+
+BEGIN {
+    printf("time_us,srtt(us),rttvar,rate_delivered,rate_interval_us,mss_cache,lost,lost_out,snd_cwnd,sk_sndbuf,");
+    printf("sk_wmem_queued\n");
+}
+
+kprobe:tcp_rcv_established 
+/((struct sock *)arg0)->__sk_common.skc_num == 8000 || ((struct sock *)arg0)->__sk_common.skc_dport == 8000/
+{
+    $sock = (struct sock *)arg0;
+    $tcps = (struct tcp_sock *)arg0;
+    
+    printf("%lld,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", 
+        elapsed, 
+        $tcps->srtt_us, 
+        $tcps->rttvar_us,
+        $tcps->rate_delivered,
+        $tcps->rate_interval_us,
+        $tcps->mss_cache, 
+        $tcps->lost, 
+        $tcps->lost_out,
+        $tcps->snd_cwnd,
+        $sock->sk_sndbuf,
+        $sock->sk_wmem_queued
+        );
+}
